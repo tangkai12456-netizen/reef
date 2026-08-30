@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s \"https://coastwatch.pfeg.noaa.gov/erddap/griddap/NOAA_DHW.json?CRW_DHW[\\(last\\)][\\(8.657\\)][\\(97.649\\)]\")"
+    ]
+  }
+}

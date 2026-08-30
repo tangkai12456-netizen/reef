@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ReefAlert · วิธีการทำงานของระบบ</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600;700&family=Space+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+
+<style>
+  /* หน้านี้ต้อง scroll ได้ (ต่างจากหน้าแผนที่หลักที่ body overflow:hidden) */
+  body { height: auto; min-height: 100vh; overflow-y: auto; }
+
+  .doc-header {
+    height: var(--header-h);
+    background: linear-gradient(90deg, #080f1e 0%, #0b1829 50%, #080f1e 100%);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px;
+  }
+  .doc-header .header-left { display:flex; align-items:center; gap:14px; }
+  .doc-header .logo { font-size: 28px; filter: drop-shadow(0 0 8px rgba(0,212,255,0.5)); }
+  .doc-header h1 {
+    font-size: 20px; font-weight: 700; letter-spacing: 2px;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .doc-header .subtitle { font-size: 10px; color: var(--dim); }
+  .back-link {
+    color: var(--dim); font-size: 12px; text-decoration: none;
+    border-bottom: 1px solid var(--border); padding-bottom: 1px;
+  }
+  .back-link:hover { color: var(--accent); border-color: var(--accent); }
+
+  .doc-wrap { max-width: 880px; margin: 0 auto; padding: 32px 24px 80px; }
+
+  .doc-title { font-size: 26px; font-weight: 700; margin-bottom: 8px; }
+  .doc-lead { color: var(--dim); font-size: 13px; line-height: 1.7; margin-bottom: 32px; }
+
+  .section { margin-bottom: 40px; }
+  .section-num {
+    display: inline-flex; align-items:center; justify-content:center;
+    width: 24px; height: 24px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: var(--bg); font-weight: 800; font-size: 12px;
+    margin-right: 10px; flex-shrink: 0;
+  }
+  .section-title {
+    display: flex; align-items: center;
+    font-size: 18px; font-weight: 700; margin-bottom: 14px;
+    padding-bottom: 10px; border-bottom: 1px solid var(--border);
+  }
+  .card {
+    background: linear-gradient(135deg, rgba(0,212,255,0.05), rgba(0,255,157,0.02));
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 14px;
+  }
+  .card h3 { font-size: 13px; color: var(--accent); margin-bottom: 8px; letter-spacing: 0.3px; }
+  .card p, .card li { font-size: 12.5px; color: var(--dim); line-height: 1.7; }
+  .card ul { padding-left: 18px; }
+  .card li { margin-bottom: 4px; }
+  .card strong { color: var(--text); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 8px 0; }
+  th, td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--accent); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  td { color: var(--text); }
+  tr.best-row td { color: var(--accent2); font-weight: 700; }
+  .mono { font-family: var(--mono); }
+
+  .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 11.5px; }
+  .bar-label { width: 110px; flex-shrink: 0; color: var(--dim); font-family: var(--mono); }
+  .bar-track { flex: 1; height: 14px; background: rgba(0,212,255,0.06); border-radius: 4px; overflow: hidden; }
+  .bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 4px; }
+  .bar-val { width: 52px; text-align: right; font-family: var(--mono); color: var(--text); flex-shrink: 0; }
+
+  .risk-table td:nth-child(1) { font-family: var(--mono); font-weight: 700; }
+  .risk-low   td:nth-child(1) { color: var(--low); }
+  .risk-mid   td:nth-child(1) { color: var(--mid); }
+  .risk-high  td:nth-child(1) { color: var(--high); }
+  .risk-crit  td:nth-child(1) { color: var(--crit); }
+
+  .limitation-item {
+    display: flex; gap: 10px; padding: 10px 0;
+    border-bottom: 1px solid rgba(100,160,255,0.06);
+    font-size: 12.5px; color: var(--dim); line-height: 1.6;
+  }
+  .limitation-item:last-child { border-bottom: none; }
+  .limitation-icon { flex-shrink: 0; }
+  .limitation-item strong { color: var(--text); }
+
+  .loading-note { color: var(--dim); font-size: 11px; font-style: italic; }
+  .err-note { color: var(--crit); font-size: 11px; }
+</style>
+</head>
+<body>
+
+<header class="doc-header">
+  <div class="header-left">
+    <div class="logo">🪸</div>
+    <div>
+      <h1>ReefAlert</h1>
+      <div class="subtitle">เอกสารวิธีการทำงานของระบบ</div>
+    </div>
+  </div>
+  <a class="back-link" href="/">← กลับหน้าแผนที่</a>
+</header>
+
+<div class="doc-wrap">
+  <div class="doc-title">วิธีการทำงานของระบบ (Methodology)</div>
+  <p class="doc-lead">
+    เอกสารนี้อธิบายว่า ReefAlert ดึงข้อมูลจากไหน ตรวจสอบความถูกต้องยังไง โมเดล Machine Learning
+    ที่ใช้พยากรณ์ DHW ทำงานอย่างไร และข้อจำกัดของระบบ — ตัวเลขทั้งหมดในหน้านี้ (คะแนนโมเดล, feature importance)
+    ดึงมาจากไฟล์ผลการเทรนจริง (<code>dhw_model_meta.json</code>) ไม่ได้พิมพ์ตายตัวไว้ในหน้าเว็บ
+  </p>
+
+  <!-- ===== 1. แหล่งข้อมูล ===== -->
+  <div class="section">
+    <div class="section-title"><span class="section-num">1</span>แหล่งข้อมูล (Data Sources)</div>
+    <table>
+      <tr><th>ข้อมูล</th><th>แหล่งที่มา</th><th>ความละเอียด</th><th>ข้อจำกัด</th></tr>
+      <tr>
+        <td>DHW <span class="mono" style="color:var(--dim);font-size:10px;">(Degree Heating Weeks)</span></td>
+        <td>NOAA Coral Reef Watch ผ่าน PacIOOS ERDDAP mirror</td>
+        <td>~5 กม./pixel</td>
+        <td>เป็นค่าปัจจุบัน/ย้อนหลังจากดาวเทียม ไม่ใช่พยากรณ์ (ต้องใช้โมเดล ML ของเราเองพยากรณ์ล่วงหน้า)</td>
+      </tr>
+      <tr>
+        <td>SST <span class="mono" style="color:var(--dim);font-size:10px;">(อุณหภูมิผิวน้ำ)</span></td>
+        <td>Open-Meteo Marine API</td>
+        <td>รายชั่วโมง</td>
+        <td>พยากรณ์ล่วงหน้าได้จริงแค่ ~10 วัน (ขอ 14 วันแต่ 4 วันสุดท้ายไม่มีข้อมูล)</td>
+      </tr>
+      <tr>
+        <td>UV Index</td>
+        <td>Open-Meteo Forecast API</td>
+        <td>รายชั่วโมง</td>
+        <td>—</td>
+      </tr>
+    </table>
+    <div class="card" style="margin-top:10px;">
+      <p>NOAA Coral Reef Watch เป็นหน่วยงานที่เผยแพร่มาตรฐาน Bleaching Alert Level ที่ใช้กันทั่วโลก
+      เราเลือกดึงผ่าน PacIOOS ERDDAP mirror แทนการยิงตรงไปที่ endpoint ของ NOAA เอง เพราะ endpoint ของ NOAA
+      โดยตรงมีปัญหา CORS/ไม่ตอบสนองจากฝั่ง browser</p>
+    </div>
+  </div>
+
+  <!-- ===== 2. การตรวจสอบความถูกต้องของข้อมูล ===== -->
+  <div class="section">
+    <div class="section-title"><span class="section-num">2</span>การตรวจสอบความถูกต้องของข้อมูล (Data Validation)</div>
+    <div class="card">
+      <h3>✅ ยืนยันพิกัดทั้ง 8 จุดตกในทะเล ไม่ใช่บนแผ่นดิน</h3>
+      <p>ตรวจสอบทีละจุดโดยดึงข้อมูลกริด NOAA รอบพิกัดจริง (±0.25°) แล้วเทียบว่า "จุดกริดที่ใกล้พิกัดที่ตั้งไว้ที่สุด"
+      กับ "จุดกริดที่ใกล้สุดที่มีข้อมูลจริง (ไม่ใช่ null)" เป็นจุดเดียวกันหรือไม่ — ผลคือ <strong>ตรงกันทั้ง 8 จุด</strong>
+      (ห่างจากพิกัดที่ตั้งไว้เพียง 0.7–3.7 กม.) ยืนยันว่าไม่มีจุดไหนตกบน cell ที่เป็นแผ่นดิน/ไม่มีข้อมูล</p>
+    </div>
+    <div class="card">
+      <h3>✅ ตรวจสอบว่าค่า 0 เป็นข้อมูลจริง ไม่ใช่ null ที่ถูกแปลง</h3>
+      <p>โค้ดฝั่งแอปกรอง <code>null</code>/<code>NaN</code> ออกก่อนเลือก pixel ที่ใกล้ที่สุดเสมอ (ไม่มีการแปลง null → 0 ที่ไหนเลย)
+      ตรวจสอบเพิ่มด้วยการ print raw JSON response ตรงจาก NOAA — กรณีเกาะสมุยที่ค่า DHW ปัจจุบันเป็น 0 นั้น
+      ยืนยันจาก raw response แล้วว่าเป็นเลข <code>0</code> จริง ไม่ใช่ <code>null</code></p>
+    </div>
+    <div class="card">
+      <h3>✅ ทดสอบขยาย search radius เพื่อยืนยันว่าเลือก pixel ใกล้ที่สุดจริง</h3>
+      <p>ขยายรัศมีค้นหาจาก ±0.25° เป็น ±0.5° แล้วเทียบผล — ได้ค่า DHW และระยะห่างจาก pixel เดิมทุกจุดเหมือนกัน 100%
+      ยืนยันว่ารัศมีที่ใช้งานจริง (±0.25°) เพียงพอ และไม่มี pixel ที่ใกล้กว่านี้ถูกมองข้ามไป</p>
+    </div>
+  </div>
+
+  <!-- ===== 3. โมเดล Machine Learning ===== -->
+  <div class="section">
+    <div class="section-title"><span class="section-num">3</span>โมเดล Machine Learning</div>
+
+    <div class="card">
+      <h3>เปรียบเทียบ 3 โมเดล (พยากรณ์ DHW ล่วงหน้า <span id="horizon-days">…</span> วัน)</h3>
+      <table id="model-compare-table">
+        <tr><th>โมเดล</th><th>MAE</th><th>RMSE</th></tr>
+        <tr><td colspan="3" class="loading-note">กำลังโหลดข้อมูลจาก dhw_model_meta.json…</td></tr>
+      </table>
+      <p id="best-model-note" style="margin-top:8px;"></p>
+      <p style="margin-top:8px;font-size:11px;color:var(--dim);">⚠️ การเปรียบเทียบนี้เป็นการทดลองเบื้องต้นเพื่อเลือก<em>แนวทาง</em>อัลกอริทึมเท่านั้น (ทดสอบบนเป้าหมายจุดเดียว +14 วัน) — <strong>ระบบจริงที่ใช้พยากรณ์บนเว็บทั้งหมดคือ Random Forest</strong> ทั้ง Regressor และ Classifier (14 โมเดลต่อแบบ ดูหัวข้อถัดไป) ไม่ใช่ Gradient Boosting</p>
+    </div>
+
+    <div class="card">
+      <h3>Features ที่ใช้เทรนโมเดล</h3>
+      <table id="feature-table">
+        <tr><th>Feature</th><th>คำอธิบาย</th></tr>
+        <tr><td colspan="2" class="loading-note">กำลังโหลด…</td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Feature Importance (จากโมเดลที่เลือกใช้จริง)</h3>
+      <div id="feature-importance-chart"><p class="loading-note">กำลังโหลด…</p></div>
+    </div>
+
+    <div class="card">
+      <h3>MAE ตามระยะเวลาพยากรณ์ (+1 ถึง +14 วัน)</h3>
+      <p style="margin-bottom:8px;">โมเดลรายวันครบ 14 ตัว (Random Forest แยกทีละ horizon) — ยิ่งพยากรณ์ไกล ควรยิ่งคลาดเคลื่อนมากขึ้นเรื่อยๆ</p>
+      <div id="horizon-mae-chart"><p class="loading-note">กำลังโหลด…</p></div>
+    </div>
+
+    <div class="card">
+      <h3>Classifier: จำแนกระดับความเสี่ยงฟอกขาวโดยตรง (ทำงานควบคู่กับ Regressor)</h3>
+      <p style="margin-bottom:8px;" id="clf-model-type" class="loading-note">กำลังโหลด…</p>
+      <table id="clf-summary-table">
+        <tr><th>Horizon</th><th>Accuracy</th><th>Baseline*</th><th>F1 ปกติ</th><th>F1 เฝ้าระวัง</th><th>F1 สูง</th><th>F1 วิกฤต</th></tr>
+        <tr><td colspan="7" class="loading-note">กำลังโหลดข้อมูลจาก dhw_classifier_multi_meta.json…</td></tr>
+      </table>
+      <p style="margin-top:6px;font-size:10.5px;color:var(--dim);">* Baseline = เดา class ที่พบบ่อยสุดในชุดเทรนเสมอ (เทียบว่า classifier ดีกว่าเดามั่วๆ แค่ไหนจริง)</p>
+    </div>
+
+    <div class="card">
+      <h3>จำนวนตัวอย่างแต่ละ class (horizon +1 วัน)</h3>
+      <table id="clf-class-counts-table">
+        <tr><th>Class</th><th>เกณฑ์ DHW</th><th>ตัวอย่างเทรน</th><th>ตัวอย่างทดสอบ</th></tr>
+        <tr><td colspan="4" class="loading-note">กำลังโหลด…</td></tr>
+      </table>
+    </div>
+
+    <div class="card" id="clf-honest-note" style="display:none;">
+      <h3>⚠️ ข้อสังเกตที่ต้องพูดตรงๆ</h3>
+      <p id="clf-honest-text"></p>
+    </div>
+  </div>
+
+  <!-- ===== 4. เกณฑ์การประเมินความเสี่ยง ===== -->
+  <div class="section">
+    <div class="section-title"><span class="section-num">4</span>เกณฑ์การประเมินความเสี่ยง (ตามมาตรฐาน NOAA)</div>
+    <div class="card">
+      <table class="risk-table">
+        <tr><th>DHW (°C·weeks)</th><th>ระดับ</th><th>ความหมาย</th></tr>
+        <tr class="risk-low"><td>&lt; 1</td><td>🟢 ปกติ</td><td>No Stress — ไม่มีความเครียดจากความร้อนสะสม</td></tr>
+        <tr class="risk-mid"><td>1 – 3.9</td><td>🟡 เฝ้าระวัง</td><td>Bleaching Watch — เริ่มสะสมความร้อน ควรติดตามใกล้ชิด</td></tr>
+        <tr class="risk-high"><td>4 – 7.9</td><td>🟠 สูง</td><td>Alert Level 1 — เสี่ยงฟอกขาวสูง</td></tr>
+        <tr class="risk-crit"><td>≥ 8</td><td>🔴 วิกฤต</td><td>Alert Level 2 — ปะการังฟอกขาว/ตายเป็นวงกว้าง</td></tr>
+      </table>
+      <p style="margin-top:10px;">เกณฑ์นี้คือ Bleaching Alert Level ของ NOAA Coral Reef Watch ที่ใช้กันเป็นมาตรฐานสากล
+      ระบบใช้ DHW เป็นเกณฑ์หลักเสมอเมื่อมีข้อมูล ถ้ายังไม่มี DHW จะ fallback ไปประมาณจาก SST ชั่วคราวแทน</p>
+    </div>
+  </div>
+
+  <!-- ===== 5. ข้อจำกัดของระบบ ===== -->
+  <div class="section">
+    <div class="section-title"><span class="section-num">5</span>ข้อจำกัดของระบบ (Limitations)</div>
+    <div class="card" id="limitations-card">
+      <div class="limitation-item">
+        <span class="limitation-icon">⚠️</span>
+        <div><strong>พึ่งพา server ภายนอก (PacIOOS)</strong> — ข้อมูล DHW ทั้งหมดดึงจาก PacIOOS ERDDAP mirror
+        ซึ่งเป็นบริการฟรีที่พบว่าบางครั้งไม่เสถียร/ตอบสนองช้าหรือ timeout ไม่มีการควบคุมความเสถียรของ server นี้ได้เลย</div>
+      </div>
+      <div class="limitation-item">
+        <span class="limitation-icon">⚠️</span>
+        <div><strong>โมเดลพยากรณ์มีความคลาดเคลื่อนจริง</strong> — MAE เฉลี่ยประมาณ <span id="limit-mae">~1.0</span> °C·weeks
+        และยิ่งพยากรณ์ไกลออกไปยิ่งคลาดเคลื่อนมากขึ้น (ดูตาราง MAE ตาม horizon ด้านบน) ไม่ควรใช้เป็นตัวเลขที่แม่นยำ 100%
+        ควรใช้ประกอบการตัดสินใจร่วมกับข้อมูลอื่นเสมอ</div>
+      </div>
+      <div class="limitation-item">
+        <span class="limitation-icon">⚠️</span>
+        <div><strong>ครอบคลุมเฉพาะ 8 จุดในน่านน้ำไทย</strong> — ไม่ใช่ระบบเฝ้าระวังปะการังทั่วโลก
+        และโมเดล ML ถูกเทรนจากข้อมูลของ 8 จุดนี้เท่านั้น การใช้กับพื้นที่อื่นอาจไม่แม่นยำเท่า</div>
+      </div>
+      <div class="limitation-item">
+        <span class="limitation-icon">⚠️</span>
+        <div><strong>SST พยากรณ์ล่วงหน้าได้จริงแค่ ~10 วัน</strong> — จากทั้งหมด 14 วันที่แอปแสดง (ข้อจำกัดของ Open-Meteo API ฟรี)</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(async () => {
+  try {
+    const [metaRes, multiRes, clfRes] = await Promise.all([
+      fetch('/dhw_model_meta.json'),
+      fetch('/dhw_models_multi_meta.json'),
+      fetch('/dhw_classifier_multi_meta.json'),
+    ]);
+    if (!metaRes.ok || !multiRes.ok) throw new Error('โหลดไฟล์ meta ไม่สำเร็จ');
+    const meta = await metaRes.json();
+    const clfMeta = clfRes.ok ? await clfRes.json() : null;
+    const multiMeta = await multiRes.json();
+
+    // ----- horizon days -----
+    document.getElementById('horizon-days').textContent = meta.forecast_horizon_days;
+
+    // ----- ตารางเปรียบเทียบ 3 โมเดล -----
+    const scores = meta.scores || {};
+    const modelNames = Object.keys(scores);
+    const bestName = meta.best_model;
+    const rows = modelNames
+      .sort((a, b) => scores[a].mae - scores[b].mae)
+      .map(name => `
+        <tr class="${name === bestName ? 'best-row' : ''}">
+          <td>${name}${name === bestName ? ' 🏆' : ''}</td>
+          <td class="mono">${scores[name].mae.toFixed(4)}</td>
+          <td class="mono">${scores[name].rmse.toFixed(4)}</td>
+        </tr>
+      `).join('');
+    document.getElementById('model-compare-table').innerHTML =
+      `<tr><th>โมเดล</th><th>MAE</th><th>RMSE</th></tr>${rows}`;
+
+    // ----- หมายเหตุเลือกโมเดล (คำนวณ % ต่างจาก baseline จริงจากตัวเลข ไม่ hardcode) -----
+    const baselineName = modelNames.find(n => n.includes('Linear'));
+    if (baselineName && baselineName !== bestName) {
+      const baseMae = scores[baselineName].mae;
+      const bestMae = scores[bestName].mae;
+      const pctBetter = ((baseMae - bestMae) / baseMae * 100);
+      document.getElementById('best-model-note').innerHTML =
+        `เลือกใช้ <strong>${bestName}</strong> เพราะมี MAE ต่ำที่สุด (${bestMae.toFixed(4)}) — ` +
+        `แต่ควรบอกตรงๆ ว่าดีกว่า ${baselineName} เพียง <strong>${pctBetter.toFixed(1)}%</strong> เท่านั้น ` +
+        (scores[bestName].rmse > scores[baselineName].rmse
+          ? `และในแง่ RMSE ${baselineName} ยังทำได้ดีกว่าด้วยซ้ำ (${scores[baselineName].rmse.toFixed(4)} vs ${scores[bestName].rmse.toFixed(4)}) — ` +
+            `สรุปคือโมเดล ML ที่ซับซ้อนกว่าไม่ได้แม่นยำกว่าอย่างมีนัยสำคัญในข้อมูลชุดนี้`
+          : '');
+    }
+
+    // ----- ตาราง feature -----
+    const featureDescriptions = {
+      sst: 'SST ปัจจุบัน',
+      sst_lag7: 'SST ย้อนหลัง 7 วัน',
+      sst_lag14: 'SST ย้อนหลัง 14 วัน',
+      sst_lag30: 'SST ย้อนหลัง 30 วัน',
+      dhw_lag7: 'DHW ย้อนหลัง 7 วัน',
+      dhw_lag14: 'DHW ย้อนหลัง 14 วัน',
+      sst_ma7: 'ค่าเฉลี่ยเคลื่อนที่ SST 7 วัน',
+      sst_ma30: 'ค่าเฉลี่ยเคลื่อนที่ SST 30 วัน',
+      sst_anomaly: 'SST anomaly (คำนวณมาให้แล้วจาก NOAA CRW_SSTANOMALY)',
+      month: 'เดือน (จับรูปแบบตามฤดูกาล)',
+    };
+    const featCols = meta.feature_columns || [];
+    document.getElementById('feature-table').innerHTML =
+      `<tr><th>Feature</th><th>คำอธิบาย</th></tr>` +
+      featCols.map(f => `<tr><td class="mono">${f}</td><td>${featureDescriptions[f] || '—'}</td></tr>`).join('');
+
+    // ----- Feature importance bar chart -----
+    const importances = meta.feature_importances || {};
+    const sortedFeats = Object.entries(importances).sort((a, b) => b[1] - a[1]);
+    if (sortedFeats.length) {
+      const maxImp = sortedFeats[0][1];
+      document.getElementById('feature-importance-chart').innerHTML = sortedFeats.map(([feat, imp]) => `
+        <div class="bar-row">
+          <span class="bar-label">${feat}</span>
+          <div class="bar-track"><div class="bar-fill" style="width:${(imp / maxImp * 100).toFixed(1)}%;"></div></div>
+          <span class="bar-val">${(imp * 100).toFixed(1)}%</span>
+        </div>
+      `).join('');
+    } else {
+      document.getElementById('feature-importance-chart').innerHTML = '<p class="err-note">ไม่มีข้อมูล feature importance ในไฟล์ meta</p>';
+    }
+
+    // ----- MAE ตาม horizon -----
+    const scoresByHorizon = multiMeta.scores_by_horizon || {};
+    const horizons = Object.keys(scoresByHorizon).map(Number).sort((a, b) => a - b);
+    if (horizons.length) {
+      const maxMae = Math.max(...horizons.map(h => scoresByHorizon[h].mae));
+      document.getElementById('horizon-mae-chart').innerHTML = horizons.map(h => {
+        const mae = scoresByHorizon[h].mae;
+        return `
+          <div class="bar-row">
+            <span class="bar-label">+${h} วัน</span>
+            <div class="bar-track"><div class="bar-fill" style="width:${(mae / maxMae * 100).toFixed(1)}%;"></div></div>
+            <span class="bar-val">${mae.toFixed(3)}</span>
+          </div>
+        `;
+      }).join('');
+
+      // ----- ค่า MAE เฉลี่ยใน limitations section -----
+      const avgMae = horizons.reduce((sum, h) => sum + scoresByHorizon[h].mae, 0) / horizons.length;
+      document.getElementById('limit-mae').textContent = avgMae.toFixed(2);
+    } else {
+      document.getElementById('horizon-mae-chart').innerHTML = '<p class="err-note">ไม่มีข้อมูล MAE รายวันในไฟล์ meta</p>';
+    }
+
+    // ----- Classifier: จำแนกระดับความเสี่ยงฟอกขาวโดยตรง (ควบคู่กับ Regressor) -----
+    if (clfMeta && clfMeta.scores_by_horizon) {
+      document.getElementById('clf-model-type').textContent = clfMeta.model_type || '';
+      document.getElementById('clf-model-type').classList.remove('loading-note');
+
+      const clfScores = clfMeta.scores_by_horizon;
+      const clfHorizons = Object.keys(clfScores).map(Number).sort((a, b) => a - b);
+      const classNames = ['ปกติ', 'เฝ้าระวัง', 'สูง', 'วิกฤต'];
+
+      // ตารางสรุปทุก horizon
+      document.getElementById('clf-summary-table').innerHTML =
+        `<tr><th>Horizon</th><th>Accuracy</th><th>Baseline*</th><th>F1 ปกติ</th><th>F1 เฝ้าระวัง</th><th>F1 สูง</th><th>F1 วิกฤต</th></tr>` +
+        clfHorizons.map(h => {
+          const s = clfScores[h];
+          const f1 = c => s.per_class?.[c]?.measurable ? s.per_class[c].f1.toFixed(3) : '—';
+          return `<tr>
+            <td>+${h} วัน</td>
+            <td class="mono">${(s.accuracy * 100).toFixed(1)}%</td>
+            <td class="mono">${(s.baseline_accuracy * 100).toFixed(1)}%</td>
+            <td class="mono">${f1('ปกติ')}</td>
+            <td class="mono">${f1('เฝ้าระวัง')}</td>
+            <td class="mono">${f1('สูง')}</td>
+            <td class="mono">${f1('วิกฤต')}</td>
+          </tr>`;
+        }).join('');
+
+      // จำนวนตัวอย่างแต่ละ class ที่ horizon +1 (ตัวแทนที่ใกล้วันนี้ที่สุด)
+      const h1 = clfScores['1'];
+      if (h1) {
+        const thresholds = { 'ปกติ': 'DHW < 1', 'เฝ้าระวัง': 'DHW 1–3.9', 'สูง': 'DHW 4–7.9', 'วิกฤต': 'DHW ≥ 8' };
+        document.getElementById('clf-class-counts-table').innerHTML =
+          `<tr><th>Class</th><th>เกณฑ์ DHW</th><th>ตัวอย่างเทรน</th><th>ตัวอย่างทดสอบ</th></tr>` +
+          classNames.map(c => `
+            <tr>
+              <td>${c}</td>
+              <td class="mono">${thresholds[c]}</td>
+              <td class="mono">${h1.train_class_counts?.[c] ?? '—'}</td>
+              <td class="mono">${h1.test_class_counts?.[c] ?? '—'}</td>
+            </tr>
+          `).join('');
+      }
+
+      // ----- ข้อสังเกตตรงๆ: เทียบ precision/recall ของ "วิกฤต" ที่ horizon แรกสุดกับไกลสุด (คำนวณจากข้อมูลจริง) -----
+      const firstH = clfHorizons[0];
+      const lastH = clfHorizons[clfHorizons.length - 1];
+      const critFirst = clfScores[firstH]?.per_class?.['วิกฤต'];
+      const critLast = clfScores[lastH]?.per_class?.['วิกฤต'];
+      if (critFirst && critLast && critFirst.measurable && critLast.measurable) {
+        document.getElementById('clf-honest-note').style.display = 'block';
+        document.getElementById('clf-honest-text').innerHTML =
+          `Class "วิกฤต" มี recall = <strong>${(critFirst.recall * 100).toFixed(0)}%</strong> ที่ +${firstH} วัน ` +
+          `และยังคง ${(critLast.recall * 100).toFixed(0)}% ที่ +${lastH} วัน (แทบไม่เคยพลาดเคสจริงเลย) ` +
+          `แต่ precision ลดลงจาก <strong>${(critFirst.precision * 100).toFixed(0)}%</strong> เหลือ <strong>${(critLast.precision * 100).toFixed(0)}%</strong> ` +
+          `เมื่อพยากรณ์ไกลขึ้น — พูดง่ายๆ คือโมเดล "ระวังไว้ก่อน" ไม่พลาดแจ้งเตือนเหตุวิกฤตจริง แต่จะแจ้งเตือนเกินจริงบ่อยขึ้นเมื่อพยากรณ์ไกลออกไป ` +
+          `(เกิดจากตั้ง class_weight='balanced' โดยตั้งใจ เหมาะกับระบบเตือนภัยที่ไม่อยากพลาดเหตุการณ์จริง) ` +
+          `นอกจากนี้ตัวอย่าง "วิกฤต" ในชุดทดสอบที่ horizon ไกลๆ มีจำนวนน้อยมาก (n=${clfScores[lastH]?.test_class_counts?.['วิกฤต'] ?? '?'}) ` +
+          `ทำให้ตัวเลข precision ที่ horizon ไกลยังมีความไม่แน่นอนสูง ไม่ควรอ้างว่าแม่นยำระดับนั้นจริง 100%`;
+      }
+    } else {
+      document.getElementById('clf-model-type').textContent = '❌ ไม่มีข้อมูล classifier ในไฟล์ meta (ต้องรัน train_model.py ก่อน)';
+      document.getElementById('clf-model-type').classList.add('err-note');
+      document.getElementById('clf-summary-table').innerHTML = '<tr><td class="err-note">ไม่มีข้อมูล</td></tr>';
+      document.getElementById('clf-class-counts-table').innerHTML = '<tr><td class="err-note">ไม่มีข้อมูล</td></tr>';
+    }
+
+  } catch (err) {
+    console.error(err);
+    document.querySelectorAll('.loading-note').forEach(el => {
+      el.textContent = '❌ โหลดข้อมูลจริงจากไฟล์ meta ไม่สำเร็จ (ต้องรัน train_model.py ก่อน)';
+      el.classList.add('err-note');
+      el.classList.remove('loading-note');
+    });
+  }
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ReefAlert — ระบบพยากรณ์ปะการังฟอกขาว</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600;700&family=Space+Mono&display=swap" rel="stylesheet">
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ===== HEADER ===== -->
+  <header id="header">
+    <div class="header-left">
+      <div class="logo">🪸</div>
+      <div class="title-block">
+        <h1>ReefAlert</h1>
+        <span class="subtitle">ระบบเฝ้าระวังปะการังฟอกขาว</span>
+      </div>
+      <a href="/methodology" id="methodology-link"
+        style="display:inline-flex;align-items:center;gap:4px;color:var(--dim);font-size:11px;text-decoration:none;margin-left:18px;padding-bottom:1px;white-space:nowrap;">
+        วิธีการทำงานของระบบ
+      </a>
+    </div>
+    <div class="header-right">
+      <div id="status-badge" class="badge loading">
+        <span class="dot"></span>
+        <span id="status-text">กำลังโหลดข้อมูล...</span>
+      </div>
+      <div id="last-update" class="update-time">—</div>
+      <div class="header-note">ข้อมูลอ้างอิงจากระบบพยากรณ์สภาพอากาศและน้ำทะเล</div>
+    </div>
+  </header>
+
+  <!-- ===== MAIN LAYOUT ===== -->
+  <div id="app">
+
+    <!-- LEFT SIDEBAR -->
+    <aside id="sidebar">
+      <div class="sidebar-header">
+        <span>แนวปะการัง 8 แห่ง</span>
+        <span id="reef-count" class="count-badge">0/8</span>
+      </div>
+
+      <div class="intro-card">
+        <div class="intro-title">ภาพรวมระบบ</div>
+        <p>ReefAlert ใช้ข้อมูลอุณหภูมิน้ำทะเลจากแหล่งพยากรณ์สากลเพื่อช่วยติดตามความเสี่ยงของปะการังฟอกขาวในพื้นที่สำคัญของไทย</p>
+      </div>
+
+      <!-- Legend -->
+      <div class="legend-box">
+        <div class="legend-title">ระดับความเสี่ยง (DHW — NOAA CRW)</div>
+        <div class="legend-item"><span class="dot-risk" style="background:#22c55e"></span> ต่ำ — DHW &lt; 1</div>
+        <div class="legend-item"><span class="dot-risk" style="background:#eab308"></span> ปานกลาง — DHW 1–3.9 (Watch)</div>
+        <div class="legend-item"><span class="dot-risk" style="background:#f97316"></span> สูง — DHW 4–7.9 (Alert 1)</div>
+        <div class="legend-item"><span class="dot-risk" style="background:#ef4444"></span> วิกฤต — DHW ≥ 8 (Alert 2)</div>
+        <div class="legend-item" style="font-size:10px;font-style:italic;opacity:0.75;">* ถ้ายังไม่มี DHW จะประมาณจาก SST ชั่วคราว</div>
+      </div>
+
+      <div class="reliability-box">
+        <div class="reliability-title">ข้อมูลและการใช้งาน</div>
+        <ul class="reliability-list">
+          <li>SST/UV: Open-Meteo Marine &amp; Forecast API</li>
+          <li>DHW ปัจจุบัน: NOAA Coral Reef Watch (ผ่าน PacIOOS)</li>
+          <li>DHW พยากรณ์ล่วงหน้า: โมเดล ML ที่เทรนเอง (<a href="/methodology" style="color:var(--accent);">ดูวิธีการทำงาน</a>)</li>
+          <li>ข้อมูลเป็นการพยากรณ์ประมาณเพื่อการเฝ้าระวัง</li>
+          <li>ควรตรวจสอบร่วมกับหน่วยงานท้องถิ่นหรือชุมชน</li>
+        </ul>
+      </div>
+
+      <!-- Knowledge Center -->
+      <div class="knowledge-box">
+        <div class="knowledge-title">ศูนย์ความรู้ปะการังฟอกขาว</div>
+
+        <details class="kb-item">
+          <summary>ปะการังฟอกขาวคืออะไร</summary>
+          <p>เมื่ออุณหภูมิน้ำทะเลสูงต่อเนื่องเป็นเวลานาน ปะการังจะเครียดและขับสาหร่ายซูแซนเทลลีที่ให้ทั้งสีสันและอาหารออกไป เหลือแต่โครงหินปูนสีขาวโปร่งแสง ถ้าอุณหภูมิลดลงเร็วพอจะฟื้นตัวได้ แต่ถ้าร้อนสะสมนานเกินไปปะการังจะอดอาหารและตายในที่สุด</p>
+          <p class="kb-source">ที่มา: NOAA Coral Reef Watch — coralreefwatch.noaa.gov</p>
+        </details>
+
+        <details class="kb-item">
+          <summary>DHW คืออะไร วัดยังไง</summary>
+          <p>Degree Heating Weeks คือค่าความร้อนสะสมของน้ำทะเลย้อนหลัง 12 สัปดาห์ เทียบกับอุณหภูมิสูงสุดเฉลี่ยปกติของพื้นที่ เป็นมาตรฐานของ NOAA Coral Reef Watch: DHW &lt; 1 ปกติ, 1–3.9 เฝ้าระวัง, 4–7.9 เสี่ยงสูง (Alert 1), ≥ 8 วิกฤต (Alert 2)</p>
+          <p class="kb-source">ที่มา: NOAA Coral Reef Watch — Bleaching Alert Level methodology (coralreefwatch.noaa.gov) — แหล่งข้อมูล DHW เดียวกับที่แอปนี้ใช้จริง</p>
+        </details>
+
+        <details class="kb-item">
+          <summary>อ่านระดับความเสี่ยงในแอปยังไง</summary>
+          <p>สีเขียว/เหลือง/ส้ม/แดง อิงตามเกณฑ์ DHW ข้างต้น ถ้ายังไม่มีข้อมูล DHW ระบบจะประมาณจาก SST ไปก่อนชั่วคราว คลิกจุดสีบนแผนที่เพื่อดูรายละเอียดและคำแนะนำของแต่ละเกาะได้เลย</p>
+          <p class="kb-source">หมายเหตุ: เป็นการออกแบบ UI ของ ReefAlert เอง อิงเกณฑ์ NOAA ข้างต้น ไม่ใช่มาตรฐานที่มีองค์กรอื่นเผยแพร่โดยตรง</p>
+        </details>
+
+        <details class="kb-item">
+          <summary>ช่วยอนุรักษ์ปะการังได้ยังไง</summary>
+          <p>ใช้ครีมกันแดดสูตรปลอดภัยต่อปะการัง ไม่เหยียบหรือจับปะการัง ไม่ทอดสมอเรือทับแนวปะการัง และสนับสนุนศูนย์ฟื้นฟูปะการังในพื้นที่</p>
+          <p class="kb-source">ที่มา: แนวปฏิบัติทั่วไปที่หน่วยงานอนุรักษ์ทางทะเลเผยแพร่ (เช่น NOAA) — ไม่ใช่จากงานวิจัยฉบับใดฉบับหนึ่งโดยเฉพาะ</p>
+        </details>
+
+        <details class="kb-item">
+          <summary>เจอปะการังฟอกขาว แจ้งใคร</summary>
+          <p>โทรสายด่วนพิทักษ์ป่าและรักษาทะเล <strong>1362</strong> (รับแจ้ง 24 ชม.) พร้อมถ่ายภาพและบันทึกพิกัด (GPS) ของจุดที่พบไว้เป็นหลักฐาน</p>
+          <p class="kb-source">ที่มา: ศูนย์สายด่วนพิทักษ์ป่าและรักษาทะเล 1362 — ศูนย์ร่วมของกรมอุทยานแห่งชาติฯ, กรมป่าไม้ และกรมทรัพยากรทางทะเลและชายฝั่ง (dmcr.go.th) รับแจ้งกรณีทำลายปะการัง/หญ้าทะเลโดยตรง</p>
+        </details>
+      </div>
+
+      <!-- Reef List -->
+      <div id="reef-list"></div>
+
+      <!-- Summary Stats -->
+      <div id="stats-box" class="stats-box hidden">
+        <div class="stats-title">สรุปภาพรวม</div>
+        <div class="stats-grid">
+          <div class="stat-item" id="stat-low"><div class="stat-num">—</div><div class="stat-label">ต่ำ</div></div>
+          <div class="stat-item" id="stat-mid"><div class="stat-num">—</div><div class="stat-label">ปานกลาง</div></div>
+          <div class="stat-item" id="stat-high"><div class="stat-num">—</div><div class="stat-label">สูง</div></div>
+          <div class="stat-item" id="stat-crit"><div class="stat-num">—</div><div class="stat-label">วิกฤต</div></div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAP -->
+    <div id="map-container">
+      <div id="map"></div>
+      <!-- Loading Overlay -->
+      <div id="map-overlay">
+        <div class="loader-ring"></div>
+        <p>กำลังดึงข้อมูลอุณหภูมิน้ำทะเล...</p>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL (chart) -->
+    <div id="chart-panel" class="hidden">
+      <div class="chart-header">
+        <span id="chart-reef-name">—</span>
+        <button id="close-chart" onclick="closeChartPanel()">✕</button>
+      </div>
+      <div class="chart-meta">
+        <div class="meta-item">
+          <div class="meta-label">SST ปัจจุบัน</div>
+          <div class="meta-val" id="chart-sst">—</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-label">ความเสี่ยง</div>
+          <div class="meta-val" id="chart-risk">—</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-label">DHW (NOAA CRW)</div>
+          <div class="meta-val" id="chart-dhw">—</div>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="tempChart"></canvas>
+        <div id="dhw-zero-overlay" class="dhw-zero-overlay hidden">
+          <span>✅</span>
+          <span>ไม่มีความเครียดจากความร้อนสะสม (DHW = 0)</span>
+        </div>
+      </div>
+      <div class="chart-note" id="chart-note">📡 SST จาก Open-Meteo Marine API · DHW จาก NOAA Coral Reef Watch · พยากรณ์ประมาณ 14 วัน · ควรใช้ร่วมกับคำแนะนำจากหน่วยงานที่เกี่ยวข้อง</div>
+    </div>
+
+  </div><!-- /#app -->
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- App JS -->
+  <script src="app.js"></script>
+  <!-- ===== CHATBOT ===== -->
+<div id="chat-btn" onclick="toggleChat()">🤖</div>
+
+<div id="chat-window">
+  <div id="chat-header">
+    <div>
+      <div style="font-weight:700;color:#00d4ff;">🪸 ReefBot</div>
+      <div style="font-size:10px;color:#7aaddc;">ถามเรื่องปะการังได้เลย</div>
+    </div>
+    <button onclick="toggleChat()" style="background:none;border:none;color:#7aaddc;font-size:18px;cursor:pointer;">✕</button>
+  </div>
+  <div id="chat-messages">
+    <div class="msg bot">
+      สวัสดีครับ! ผม ReefBot 🪸<br>
+      ถามเรื่องปะการังฟอกขาว การอนุรักษ์ หรือสถานการณ์ในไทยได้เลยครับ
+    </div>
+  </div>
+  <div id="chat-input-row">
+    <input id="chat-input" type="text" placeholder="พิมพ์คำถามที่นี่..."
+      onkeydown="if(event.key==='Enter') sendChat()"/>
+    <button onclick="sendChat()">ส่ง</button>
+  </div>
+</div>
+
+<style>
+#chat-btn {
+  position: fixed;
+  bottom: 24px; right: 24px;
+  width: 56px; height: 56px;
+  background: linear-gradient(135deg, #00d4ff, #00ff9d);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 26px; cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,212,255,0.25);
+  z-index: 9998;
+  animation: float 3s ease-in-out infinite;
+  transition: transform 0.2s;
+}
+#chat-btn:hover { transform: scale(1.1); }
+
+#chat-window {
+  position: fixed;
+  bottom: 90px; right: 24px;
+  width: 320px; height: 440px;
+  background: #0b1829;
+  border: 1px solid rgba(0,212,255,0.2);
+  border-radius: 16px;
+  display: none;
+  flex-direction: column;
+  z-index: 9997;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6), 0 0 10px rgba(0,212,255,0.06);
+  overflow: hidden;
+  animation: fade-up 0.3s ease;
+}
+#chat-window.open { display: flex; }
+
+#chat-header {
+  padding: 14px 16px;
+  background: rgba(0,212,255,0.06);
+  border-bottom: 1px solid rgba(0,212,255,0.15);
+  display: flex; justify-content: space-between; align-items: center;
+}
+
+#chat-messages {
+  flex: 1; overflow-y: auto;
+  padding: 12px; display: flex;
+  flex-direction: column; gap: 8px;
+}
+#chat-messages::-webkit-scrollbar { width: 3px; }
+#chat-messages::-webkit-scrollbar-thumb { background: rgba(0,212,255,0.2); }
+
+.msg {
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 85%;
+  font-family: 'Kanit', sans-serif;
+  animation: fade-up 0.3s ease;
+}
+.msg.bot {
+  background: rgba(0,212,255,0.08);
+  border: 1px solid rgba(0,212,255,0.15);
+  color: #e8f4ff;
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+}
+.msg.user {
+  background: linear-gradient(135deg, rgba(0,212,255,0.2), rgba(0,255,157,0.1));
+  border: 1px solid rgba(0,212,255,0.25);
+  color: #e8f4ff;
+  align-self: flex-end;
+  border-bottom-right-radius: 4px;
+}
+.msg.typing {
+  background: rgba(0,212,255,0.06);
+  border: 1px solid rgba(0,212,255,0.1);
+  color: #7aaddc;
+  align-self: flex-start;
+  font-style: italic;
+}
+
+#chat-input-row {
+  padding: 10px 12px;
+  border-top: 1px solid rgba(0,212,255,0.12);
+  display: flex; gap: 8px;
+  background: rgba(0,0,0,0.1);
+}
+#chat-input {
+  flex: 1; padding: 8px 12px;
+  background: rgba(0,212,255,0.06);
+  border: 1px solid rgba(0,212,255,0.2);
+  border-radius: 20px;
+  color: #e8f4ff;
+  font-family: 'Kanit', sans-serif;
+  font-size: 13px;
+  outline: none;
+}
+#chat-input:focus { border-color: rgba(0,212,255,0.5); }
+#chat-input::placeholder { color: #7aaddc; }
+#chat-input-row button {
+  padding: 8px 14px;
+  background: linear-gradient(135deg, #00d4ff, #00ff9d);
+  border: none; border-radius: 20px;
+  color: #060e1a; font-weight: 700;
+  font-family: 'Kanit', sans-serif;
+  font-size: 12px; cursor: pointer;
+  transition: transform 0.15s, opacity 0.15s;
+}
+#chat-input-row button:hover { transform: scale(1.05); }
+#chat-input-row button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+</style>
+-->ody>
+</html>

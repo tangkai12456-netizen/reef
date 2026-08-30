@@ -1,0 +1,49 @@
+{
+  "best_model": "Gradient Boosting",
+  "feature_columns": [
+    "sst",
+    "sst_lag7",
+    "sst_lag14",
+    "sst_lag30",
+    "dhw_lag7",
+    "dhw_lag14",
+    "sst_ma7",
+    "sst_ma30",
+    "sst_anomaly",
+    "month"
+  ],
+  "feature_importances": {
+    "sst": 0.02850575407840876,
+    "sst_lag7": 0.0013208279820696178,
+    "sst_lag14": 0.0011530217548012922,
+    "sst_lag30": 0.0010530222524632723,
+    "dhw_lag7": 0.8146405564779148,
+    "dhw_lag14": 0.003463686512807109,
+    "sst_ma7": 0.06769462126239886,
+    "sst_ma30": 0.024014299280137527,
+    "sst_anomaly": 0.021550982982408706,
+    "month": 0.03660322741659005
+  },
+  "target_column": "dhw_future_14d",
+  "forecast_horizon_days": 14,
+  "trained_at": "2026-07-15T13:55:21.405158Z",
+  "training_rows": 29240,
+  "date_range": {
+    "start": "2016-08-14 12:00:00+00:00",
+    "end": "2026-07-13 12:00:00+00:00"
+  },
+  "scores": {
+    "Linear Regression (baseline)": {
+      "mae": 0.35171724761169326,
+      "rmse": 0.6422244291745098
+    },
+    "Random Forest": {
+      "mae": 0.3010454347504434,
+      "rmse": 0.8938586227697651
+    },
+    "Gradient Boosting": {
+      "mae": 0.2532784615250832,
+      "rmse": 0.6690571642931354
+    }
+  }
+}
