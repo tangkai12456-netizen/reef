@@ -12,3 +12,5 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+"dhw_models_multi.pkl" 
+"dhw_classifier_multi.pkl" 
