@@ -168,6 +168,12 @@ body {
   box-shadow: var(--glow-red);
   animation: pulse-badge 1.5s ease infinite;
 }
+/* ข้อมูลมาไม่ครบ (บางเกาะดึง SST ไม่สำเร็จ) — เตือนแบบไม่ตื่นตระหนกเท่า .warning */
+.badge.degraded {
+  background: rgba(234,179,8,0.1);
+  border-color: rgba(234,179,8,0.45);
+  color: var(--mid);
+}
 
 .badge .dot {
   width: 7px; height: 7px; border-radius: 50%;
@@ -317,64 +323,55 @@ body {
 }
 .reliability-list li + li { margin-top: 2px; }
 
-/* Knowledge Center */
-.knowledge-box {
+/* Knowledge Center — แท็บเดียวคลิกไปหน้า /knowledge
+   เนื้อหาทั้งหมดอยู่ที่หน้านั้น ไม่กางในแถบข้างเพื่อให้หน้าแผนที่ดูโล่ง */
+.kb-tab {
+  display: flex;
+  align-items: center;
+  gap: 11px;
   margin: 12px 18px;
-  padding: 10px 12px;
+  padding: 12px 13px;
   border: 1px solid rgba(0,212,255,0.16);
   border-radius: 12px;
   background: linear-gradient(135deg, rgba(0,212,255,0.07), rgba(0,255,157,0.04));
-}
-.knowledge-title {
-  font-size: 9px;
-  color: var(--accent);
-  text-transform: uppercase;
-  letter-spacing: 1.4px;
-  margin-bottom: 6px;
-  font-weight: 700;
-}
-.kb-item {
-  border-bottom: 1px solid rgba(0,212,255,0.08);
-  padding: 6px 0;
-}
-.kb-item:last-child { border-bottom: none; }
-.kb-item summary {
-  font-size: 11.5px;
-  color: var(--text);
+  text-decoration: none;
   cursor: pointer;
-  list-style: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 2px 0;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+}
+.kb-tab:hover {
+  border-color: rgba(0,212,255,0.5);
+  box-shadow: var(--glow-accent);
+  transform: translateY(-1px);
+}
+.kb-tab:active { transform: translateY(0); }
+
+.kb-tab-ico {
+  font-size: 19px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 5px rgba(0,212,255,0.35));
+}
+.kb-tab-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.kb-tab-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
   transition: color 0.2s;
 }
-.kb-item summary:hover { color: var(--accent); }
-.kb-item summary::-webkit-details-marker { display: none; }
-.kb-item summary::after {
-  content: '+';
+.kb-tab:hover .kb-tab-title { color: var(--accent); }
+.kb-tab-sub { font-size: 10px; color: var(--dim); line-height: 1.3; }
+
+/* ลูกศรบอกว่าคลิกแล้วไปหน้าอื่น — ดันไปชิดขวาสุดด้วย margin-left:auto */
+.kb-tab::after {
+  content: '›';
+  margin-left: auto;
   color: var(--dim);
-  font-size: 13px;
+  font-size: 17px;
+  line-height: 1;
   flex-shrink: 0;
+  transition: transform 0.2s, color 0.2s;
 }
-.kb-item[open] summary::after { content: '−'; }
-.kb-source {
-  font-size: 9.5px !important;
-  color: var(--dim);
-  opacity: 0.7;
-  font-style: italic;
-  margin-top: 4px !important;
-  padding-top: 6px;
-  border-top: 1px dashed rgba(100,160,255,0.15);
-}
-.kb-item p {
-  font-size: 11px;
-  color: var(--dim);
-  line-height: 1.6;
-  margin-top: 6px;
-  padding-right: 4px;
-}
+.kb-tab:hover::after { color: var(--accent); transform: translateX(3px); }
 
 /* Reef items */
 #reef-list { flex: 1; }

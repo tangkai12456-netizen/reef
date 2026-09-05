@@ -64,6 +64,19 @@ function getRisk(sst, dhw) {
     };
   }
 
+  // ไม่มีทั้ง DHW และ SST — ดึงข้อมูลไม่สำเร็จจริงๆ
+  // ต้องบอกผู้ใช้ตรงๆ ว่า "ไม่มีข้อมูล" ห้ามตีเป็นสีเขียว/ความเสี่ยงต่ำเด็ดขาด
+  // (แอปเฝ้าระวังที่โชว์เขียวทั้งที่ไม่รู้สถานการณ์จริง อันตรายกว่าไม่โชว์อะไรเลย)
+  if (typeof sst !== 'number' || Number.isNaN(sst)) return {
+    label: "ไม่มีข้อมูล", emoji: "⚪", color: "#64748b", level: null,
+    actions: [
+      "🔌 เชื่อมต่อแหล่งข้อมูลอุณหภูมิน้ำทะเลไม่ได้ในขณะนี้",
+      "🔄 ลองรีเฟรชหน้าเว็บอีกครั้งในอีกสักครู่",
+      "📞 หากต้องการข้อมูลเร่งด่วน ติดต่อกรมทรัพยากรทางทะเลและชายฝั่ง (ทช.) โทร 1362",
+    ],
+    desc: "ยังประเมินความเสี่ยงไม่ได้ เพราะดึงข้อมูล SST และ DHW ไม่สำเร็จ"
+  };
+
   // Fallback ชั่วคราว (ยังไม่มี DHW): ประมาณจาก SST ปัจจุบัน — จะถูกแทนที่อัตโนมัติเมื่อ DHW มาถึง
   if (sst >= 31.0) return {
     label: "วิกฤต", emoji: "🔴", color: "#ef4444", level: 3,
@@ -108,6 +121,40 @@ function getRisk(sst, dhw) {
   };
 }
 
+// ===== ตัวช่วยดึง JSON ที่ทนต่อความขัดข้องชั่วคราว =====
+// API สาธารณะ (Open-Meteo / ERDDAP) พลาดเป็นครั้งคราวจาก rate limit หรือ network hiccup
+// ลองซ้ำแบบ exponential backoff ก่อนยอมแพ้ ช่วยลดอาการ "บางเกาะโหลดไม่ขึ้น" ได้มาก
+async function fetchJSONWithRetry(url, { tries = 3, timeout = 12000, label = 'API' } = {}) {
+  let lastErr;
+
+  for (let attempt = 0; attempt < tries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+      if (!res.ok) {
+        const err = new Error(`HTTP ${res.status}`);
+        err.status = res.status;
+        throw err;
+      }
+      return await res.json();
+    } catch (err) {
+      lastErr = err.name === 'AbortError'
+        ? new Error(`${label} ไม่ตอบสนองภายใน ${timeout / 1000} วินาที`)
+        : err;
+
+      // 4xx ที่ไม่ใช่ 429 = คำขอผิดเอง ลองซ้ำก็ได้ผลเดิม เลิกทันที
+      if (err.status && err.status !== 429 && err.status < 500) break;
+
+      if (attempt < tries - 1) await new Promise(r => setTimeout(r, 600 * 2 ** attempt));
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  throw lastErr;
+}
+
 // ===== DHW จริงจาก NOAA Coral Reef Watch (ERDDAP) =====
 // เผื่อ mirror หลักของ NOAA (.noaa.gov) เข้าไม่ถึงจากบางเครือข่าย
 // จึงมี mirror สำรองจาก PacIOOS (มหาวิทยาลัยฮาวาย) ที่ sync ข้อมูลชุดเดียวกัน
@@ -125,20 +172,11 @@ async function fetchDHWFrom(base, reef) {
   const lonRange = `(${(reef.lon - delta).toFixed(3)}):(${(reef.lon + delta).toFixed(3)})`;
   const url = `${base}?CRW_DHW[(last)][${latRange}][${lonRange}]`;
 
-  // ERDDAP บางครั้งช้าหรือไม่ตอบสนอง — ยกเลิกถ้าเกิน 6 วิ กันไม่ให้แอปค้าง
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 6000);
-  let res;
-  try {
-    res = await fetch(url, { signal: controller.signal });
-  } catch (err) {
-    if (err.name === 'AbortError') throw new Error('ไม่ตอบสนองภายใน 6 วินาที');
-    throw err;
-  } finally {
-    clearTimeout(timer);
-  }
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const json = await res.json();
+  // ERDDAP ปกติตอบใน ~1-2 วิ แต่บางช่วงช้าถึง 10 วิ — ให้เวลา 12 วิต่อครั้งและลองซ้ำได้
+  // (เดิมตัดที่ 6 วิครั้งเดียว ทำให้ DHW หายเป็นประจำเวลา ERDDAP อืด)
+  const json = await fetchJSONWithRetry(url, { tries: 3, timeout: 12000, label: 'ERDDAP' });
+
+  if (!json?.table?.rows) throw new Error('ERDDAP ส่งข้อมูลกลับมาในรูปแบบที่อ่านไม่ได้');
   const cols   = json.table.columnNames;
   const latIdx = cols.indexOf('latitude');
   const lonIdx = cols.indexOf('longitude');
@@ -315,10 +353,132 @@ function triggerAlerts(alertReefs) {
 }
 
 // ===== แผนที่ =====
+// เดิมใช้ CARTO dark_all แต่ CARTO เปลี่ยนนโยบายให้ต้องมี API key แล้ว
+// ตอนนี้ยังคืน HTTP 200 อยู่ แต่เป็นภาพที่พิมพ์ลายน้ำ "API KEY REQUIRED" ทับทั้งแผ่น
+// (จับด้วยการเช็ค status code ไม่ได้ ต้องเปิดดูภาพถึงจะรู้) จึงย้ายมาใช้ Esri Dark Gray
+// ซึ่งเปิดให้ใช้ฟรีโดยไม่ต้องมี key และโทนสีเข้ากับธีมเดิมของแอป
+// ===== ตั้งค่าแผนที่พื้นหลัง =====
+//
+// ★ ถ้าอยากใช้แผนที่ Stadia (สวยที่สุด) ตอน deploy ขึ้นโดเมนจริง ให้ใส่ API key ตรงนี้
+//   สมัครฟรีที่ https://stadiamaps.com — ฟรี 200,000 ครั้ง/เดือน ไม่ต้องใส่บัตร
+//   หลังสมัครแล้วอย่าลืมล็อก key ให้ใช้ได้เฉพาะโดเมนของคุณ (Authentication → Domains)
+//   key จะโผล่ในโค้ดฝั่งเบราว์เซอร์ซึ่งเป็นเรื่องปกติ ความปลอดภัยมาจากการล็อกโดเมน ไม่ใช่การซ่อน key
+//
+//   ปล่อยว่างไว้ = ใช้ OpenFreeMap ซึ่งฟรีตลอด ไม่ต้องสมัคร ไม่มีโควต้า และใช้ได้ทุกโดเมน
+//   (จงใจไม่ใช้ Stadia แบบไม่มี key ถึงแม้บน localhost จะใช้ได้ เพราะจะทำให้เห็นแผนที่
+//    ตอนพัฒนาคนละแบบกับตอน deploy จริง แล้วไปเซอร์ไพรส์เอาตอนขึ้นออนไลน์)
+const STADIA_API_KEY = '';
+
+// เรียงจาก "สวย/ละเอียดที่สุด" ไป "ใช้ได้แน่นอนที่สุด" แล้วให้ addBasemap() ไล่ลองตามลำดับ
+//
+// 1) Stadia Alidade Smooth Dark (เฉพาะเมื่อใส่ key) — ใกล้เคียง CARTO dark_all เดิมที่สุด
+//    ป้ายชื่ออ่านง่าย มีทั้งอังกฤษและไทย รองรับ retina (@2x)
+//
+// 2) OpenFreeMap Dark — ฟรีตลอด ไม่ต้องมี key ใช้ได้ทุกโดเมน มีถนน 22 ชั้น ป้ายชื่อ 15 ชั้น
+//    เป็น vector tile จึงต้องเรนเดอร์ผ่าน MapLibre (โหลดไว้แล้วใน index.html)
+//
+// 3) Esri Dark Gray — raster ธรรมดา ใช้ได้ทุกที่ไม่ต้องมี key แต่จืดและป้ายจางกว่า
+//    Esri แยก "แผนที่ฐาน" กับ "ป้ายชื่อ" เป็นคนละ layer จึงต้องซ้อน labelsUrl ทับด้วย
+//
+// 4) OpenStreetMap — ธีมสว่าง ไม่เข้ากับ UI แต่ไว้กันเหนียวกรณีเจ้าอื่นล่มหมด
+const BASEMAPS = [
+  // ใส่ Stadia เข้าลิสต์เฉพาะตอนที่มี key จริงเท่านั้น ไม่งั้นจะได้ 401 ทุกไทล์บนโดเมนจริง
+  ...(STADIA_API_KEY ? [{
+    name: 'Stadia Alidade Smooth Dark',
+    type: 'raster',
+    url: `https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png?api_key=${STADIA_API_KEY}`,
+    labelsIncluded: true, // ป้ายชื่อฝังมาในไทล์แล้ว ไม่ต้องซ้อน layer เพิ่ม
+    requiresKey: true,
+    options: {
+      attribution: '© Stadia Maps © OpenMapTiles © OpenStreetMap contributors',
+      maxZoom: 20,
+    },
+  }] : []),
+  {
+    name: 'OpenFreeMap Dark',
+    type: 'vector',
+    styleUrl: 'https://tiles.openfreemap.org/styles/dark',
+    labelsIncluded: true,
+    options: {
+      attribution: '© OpenFreeMap © OpenMapTiles © OpenStreetMap contributors',
+      maxZoom: 20,
+    },
+  },
+  {
+    name: 'Esri Dark Gray',
+    type: 'raster',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    labelsUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+    options: {
+      attribution: '© Esri, HERE, Garmin, © OpenStreetMap contributors',
+      maxZoom: 18,
+      maxNativeZoom: 16, // มีไทล์จริงถึง z16 เกินกว่านั้นให้ Leaflet ขยายภาพเอา ไม่ปล่อยจอว่าง
+    },
+  },
+  {
+    name: 'OpenStreetMap',
+    type: 'raster',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    labelsIncluded: true,
+    options: { attribution: '© OpenStreetMap contributors', maxZoom: 19 },
+  },
+];
+
 const map = L.map('map', { zoomControl: true }).setView([9.0, 100.5], 6);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-  attribution: '© OpenStreetMap © CARTO', maxZoom: 18
-}).addTo(map);
+
+// ต่อ basemap ตามลำดับ ถ้าเจ้าแรกโหลดไม่ได้ค่อยสลับไปเจ้าถัดไปอัตโนมัติ
+// (นับ error หลายครั้งก่อนตัดสินใจ กัน false positive จากไทล์เดียวที่หลุดชั่วคราว)
+function addBasemap(index = 0) {
+  if (index >= BASEMAPS.length) {
+    console.error('❌ โหลดแผนที่พื้นหลังไม่ได้เลยสักเจ้า');
+    return;
+  }
+  const source = BASEMAPS[index];
+
+  // แผนที่ vector ต้องพึ่ง MapLibre + plugin จาก CDN ถ้าโหลดมาไม่ครบ
+  // (เน็ตมีปัญหา/CDN ล่ม) ให้ข้ามไปใช้เจ้าที่เป็น raster ธรรมดาแทน
+  if (source.type === 'vector' &&
+      (typeof L.maplibreGL !== 'function' || typeof maplibregl === 'undefined')) {
+    console.warn(`⚠️ basemap [${source.name}] ต้องใช้ MapLibre แต่โหลดไลบรารีไม่สำเร็จ ข้ามไปเจ้าถัดไป`);
+    return addBasemap(index + 1);
+  }
+
+  const layers = [];
+  let errors = 0;
+
+  const fallback = () => {
+    if (++errors < 4) return;
+    console.warn(`⚠️ basemap [${source.name}] โหลดไม่สำเร็จ สลับไปเจ้าถัดไป`);
+    layers.forEach(l => { l.off?.('tileerror'); map.removeLayer(l); });
+    if (source.options.attribution) {
+      map.attributionControl?.removeAttribution(source.options.attribution);
+    }
+    addBasemap(index + 1);
+  };
+
+  if (source.type === 'vector') {
+    const layer = L.maplibreGL({ style: source.styleUrl }).addTo(map);
+    layers.push(layer);
+    // plugin ตั้ง attributionControl:false ให้ MapLibre ไว้ ต้องใส่เครดิตผ่าน Leaflet เอง
+    if (source.options.attribution) {
+      map.attributionControl?.addAttribution(source.options.attribution);
+    }
+    // MapLibre แจ้ง error ผ่าน map ข้างในของมัน ไม่ใช่ event 'tileerror' ของ Leaflet
+    layer.getMaplibreMap?.()?.on('error', fallback);
+  } else {
+    layers.push(L.tileLayer(source.url, { ...source.options, zIndex: 1 }).addTo(map));
+    // ป้ายชื่อต้องอยู่เหนือแผนที่ฐานเสมอ (zIndex สูงกว่า) แต่ยังอยู่ใต้หมุดปะการัง
+    if (source.labelsUrl) {
+      layers.push(L.tileLayer(source.labelsUrl, { ...source.options, zIndex: 2 }).addTo(map));
+    }
+    // นับ error รวมจากทุก layer ของเจ้านี้ — ถ้าล่มก็ล่มพร้อมกันอยู่แล้ว
+    layers.forEach(l => l.on('tileerror', fallback));
+  }
+
+  if (source.options.maxZoom) map.setMaxZoom(source.options.maxZoom);
+  console.log(`🗺️ ใช้แผนที่พื้นหลัง: ${source.name}`);
+}
+addBasemap();
 
 let markers = {};
 let chartInstance = null;
@@ -346,7 +506,9 @@ function popupHTML(reef, sst, risk, uv, dhw, bleach) {
     <div style="display:flex;gap:8px;margin-bottom:10px;">
       <div style="flex:1;text-align:center;padding:8px 6px;background:rgba(0,212,255,0.06);border:1px solid rgba(0,212,255,0.15);border-radius:8px;">
         <div style="font-size:9px;color:#7aaddc;text-transform:uppercase;letter-spacing:1px;">🌡️ SST</div>
-        <div style="font-size:18px;font-weight:800;font-family:'Space Mono',monospace;color:#00d4ff;margin-top:2px;">${sst.toFixed(2)}°C</div>
+        ${typeof sst === 'number'
+          ? `<div style="font-size:18px;font-weight:800;font-family:'Space Mono',monospace;color:#00d4ff;margin-top:2px;">${sst.toFixed(2)}°C</div>`
+          : `<div style="font-size:13px;color:#7aaddc;margin-top:6px;">ไม่มีข้อมูล</div>`}
       </div>
       <div style="flex:1;text-align:center;padding:8px 6px;background:rgba(0,212,255,0.06);border:1px solid rgba(0,212,255,0.15);border-radius:8px;">
         <div style="font-size:9px;color:#7aaddc;text-transform:uppercase;letter-spacing:1px;">📊 DHW (NOAA CRW)</div>
@@ -505,7 +667,8 @@ function showChart(reefId) {
   panel.classList.remove('hidden');
 
   document.getElementById('chart-reef-name').textContent = `🪸 ${data.reef.name}`;
-  document.getElementById('chart-sst').textContent = `${data.sst.toFixed(2)}°C`;
+  document.getElementById('chart-sst').textContent =
+    typeof data.sst === 'number' ? `${data.sst.toFixed(2)}°C` : 'ไม่มีข้อมูล';
   const riskEl = document.getElementById('chart-risk');
   riskEl.textContent = `${data.risk.emoji} ${data.risk.label}`;
   riskEl.style.color = data.risk.color;
@@ -518,6 +681,26 @@ function showChart(reefId) {
 
   const ctx = document.getElementById('tempChart').getContext('2d');
   if (chartInstance) chartInstance.destroy();
+
+  // เกาะที่ดึง SST ไม่สำเร็จ — ไม่มีชุดข้อมูลให้วาดกราฟ บอกตรงๆ แทนการวาดกราฟเปล่า
+  if (!Array.isArray(data.temps)) {
+    document.getElementById('dhw-zero-overlay')?.classList.add('hidden');
+    document.getElementById('chart-wrap-outer').style.display = 'none';
+    const fcEmpty = document.getElementById('forecast-list');
+    if (fcEmpty) {
+      fcEmpty.style.display = 'block';
+      fcEmpty.innerHTML = `
+        <div style="padding:24px 16px;text-align:center;font-family:'Kanit',sans-serif;">
+          <div style="font-size:28px;margin-bottom:8px;">📡</div>
+          <div style="font-size:13px;color:#e8f4ff;margin-bottom:4px;">ยังไม่มีข้อมูลสำหรับเกาะนี้</div>
+          <div style="font-size:11px;color:#7aaddc;line-height:1.6;">
+            เชื่อมต่อ Open-Meteo Marine API ไม่สำเร็จ<br>ลองรีเฟรชหน้าเว็บอีกครั้งในอีกสักครู่
+          </div>
+        </div>
+      `;
+    }
+    return;
+  }
 
   // รีเซ็ต overlay "DHW = 0" ทุกครั้งที่เปิด/สลับกราฟ (จะโชว์ใหม่เฉพาะตอนพยากรณ์ DHW ทั้งชุดเป็น 0 จริง)
   document.getElementById('dhw-zero-overlay')?.classList.add('hidden');
@@ -772,7 +955,11 @@ function closeChartPanel() {
 // ===== Stats =====
 function updateStatCounts() {
   const counts = [0,0,0,0];
-  Object.values(markers).forEach(m => counts[m.risk.level]++);
+  // เกาะที่ risk.level เป็น null (ดึงข้อมูลไม่ได้) ไม่ถูกนับเข้าช่องไหนเลย
+  // ดีกว่าเหมาเป็น "ความเสี่ยงต่ำ" ซึ่งจะทำให้สถิติรวมบิดเบือน
+  Object.values(markers).forEach(m => {
+    if (typeof m.risk.level === 'number') counts[m.risk.level]++;
+  });
   document.getElementById('stat-low').querySelector('.stat-num').textContent  = counts[0];
   document.getElementById('stat-mid').querySelector('.stat-num').textContent  = counts[1];
   document.getElementById('stat-high').querySelector('.stat-num').textContent = counts[2];
@@ -780,13 +967,24 @@ function updateStatCounts() {
   document.getElementById('last-update').textContent = `อัปเดต: ${new Date().toLocaleTimeString('th-TH', { hour12: false })}`;
 }
 
-function updateStats() {
+// failedCount = จำนวนเกาะที่ดึง SST ไม่สำเร็จ — แสดงสถานะตามจริง ไม่ขึ้นเขียวทั้งที่ข้อมูลขาด
+function updateStats(failedCount = 0) {
   updateStatCounts();
   document.getElementById('stats-box').classList.remove('hidden');
 
   const badge = document.getElementById('status-badge');
-  badge.className = 'badge ok';
-  document.getElementById('status-text').textContent = 'พร้อมเฝ้าระวังจากข้อมูล Open-Meteo';
+  const statusText = document.getElementById('status-text');
+
+  if (failedCount === 0) {
+    badge.className = 'badge ok';
+    statusText.textContent = 'พร้อมเฝ้าระวังจากข้อมูล Open-Meteo';
+  } else if (failedCount < REEFS.length) {
+    badge.className = 'badge degraded';
+    statusText.textContent = `ข้อมูลไม่ครบ ${failedCount}/${REEFS.length} เกาะ`;
+  } else {
+    badge.className = 'badge warning';
+    statusText.textContent = 'เชื่อมต่อแหล่งข้อมูลไม่ได้';
+  }
 }
 
 function startLiveClock() {
@@ -816,22 +1014,39 @@ function removeSkeleton(i) { document.getElementById(`skel-${i}`)?.remove(); }
 // หมายเหตุ: DHW ไม่รวมอยู่ในนี้โดยตั้งใจ — ดึงแยกผ่าน fetchAndApplyDHW()
 // เพื่อไม่ให้ NOAA server ที่อาจช้า/ไม่ตอบสนอง บล็อกการแสดงผลแผนที่หลัก
 async function fetchSST(reef) {
-  const [marineRes, weatherRes] = await Promise.all([
-    fetch(`https://marine-api.open-meteo.com/v1/marine`
+  // SST เป็นข้อมูลหลัก (ขาดไม่ได้) ส่วน UV เป็นข้อมูลเสริม
+  // ใช้ allSettled เพื่อไม่ให้ UV ที่ล่มไปลากให้ทั้งเกาะโหลดไม่ขึ้น
+  const [marineResult, weatherResult] = await Promise.allSettled([
+    fetchJSONWithRetry(
+      `https://marine-api.open-meteo.com/v1/marine`
       + `?latitude=${reef.lat}&longitude=${reef.lon}`
-      + `&hourly=sea_surface_temperature&forecast_days=14`),
-    fetch(`https://api.open-meteo.com/v1/forecast`
+      + `&hourly=sea_surface_temperature&forecast_days=14`,
+      { label: 'Open-Meteo Marine' }
+    ),
+    fetchJSONWithRetry(
+      `https://api.open-meteo.com/v1/forecast`
       + `?latitude=${reef.lat}&longitude=${reef.lon}`
-      + `&hourly=uv_index&forecast_days=1`)
+      + `&hourly=uv_index&forecast_days=1`,
+      { tries: 2, label: 'Open-Meteo UV' }
+    )
   ]);
 
-  const marine  = await marineRes.json();
-  const weather = await weatherRes.json();
+  if (marineResult.status === 'rejected') throw marineResult.reason;
 
-  const sst   = marine.hourly.sea_surface_temperature[0];
-  const temps = marine.hourly.sea_surface_temperature;
-  const times = marine.hourly.time;
-  const uv    = weather.hourly.uv_index[0];
+  const marine = marineResult.value;
+  const temps  = marine?.hourly?.sea_surface_temperature;
+  const times  = marine?.hourly?.time;
+  if (!Array.isArray(temps) || !Array.isArray(times)) {
+    throw new Error('Open-Meteo ไม่ส่งข้อมูล SST กลับมา');
+  }
+
+  // ชั่วโมงแรกๆ อาจเป็น null ได้ — หยิบค่าจริงตัวแรกที่เจอแทนที่จะใช้ temps[0] ตรงๆ
+  const sst = temps.find(t => typeof t === 'number');
+  if (sst === undefined) throw new Error('ข้อมูล SST ที่ได้เป็นค่าว่างทั้งหมด');
+
+  const uv = weatherResult.status === 'fulfilled'
+    ? weatherResult.value?.hourly?.uv_index?.[0] ?? null
+    : null;
 
   return { sst, temps, times, uv };
 }
@@ -866,43 +1081,44 @@ async function loadAllReefs() {
 
   addSkeletons();
   const alertReefs = [];
+  let failedCount = 0;
 
-  for (let i = 0; i < REEFS.length; i++) {
-    const reef = REEFS[i];
+  // โหลดทุกเกาะพร้อมกัน — เดิมเป็น for + await ทีละเกาะ ทำให้ผู้ใช้รอนานโดยไม่จำเป็น
+  // (8 เกาะ × ~1-2 วิ = รอ 10-16 วิ ทั้งที่ยิงขนานกันได้ใน ~2 วิ)
+  await Promise.all(REEFS.map(async (reef, i) => {
     try {
-     const { sst, temps, times, uv } = await fetchSST(reef);
+      const { sst, temps, times, uv } = await fetchSST(reef);
       const risk = getRisk(sst);
       removeSkeleton(i);
       createMarker(reef, sst, temps, times, uv, undefined); // dhw: กำลังโหลด
       fetchAndApplyDHW(reef);
       addReefToSidebar(reef, sst, risk, i * 60);
       if (sst >= ALERT_THRESHOLD) alertReefs.push({ reef, sst, risk });
-      loadedCount++;
-      document.getElementById('reef-count').textContent = `${loadedCount}/8`;
     } catch (err) {
+      // ดึงข้อมูลไม่ได้จริง — แสดงสถานะ "ไม่มีข้อมูล" ตามความจริง
+      // ห้ามสุ่มตัวเลขอุณหภูมิมาแสดงแทนเด็ดขาด ผู้ใช้จะเข้าใจผิดว่าเป็นค่าที่วัดได้จริง
       removeSkeleton(i);
-      console.error(`❌ ${reef.name}:`, err);
-      const fb = 28 + Math.random() * 4;
-      const fbTemps = Array.from({length:336}, () => 28 + Math.random() * 4);
-      const fbTimes = Array.from({length:336}, (_,i) => {
-        const d = new Date(); d.setHours(d.getHours() + i);
-        return d.toISOString();
-      });
-      const risk = getRisk(fb);
-      createMarker(reef, fb, fbTemps, fbTimes, null, undefined);
-      fetchAndApplyDHW(reef);
-      addReefToSidebar(reef, fb, risk, i * 60);
-      if (fb >= ALERT_THRESHOLD) alertReefs.push({ reef, sst: fb, risk });
+      failedCount++;
+      console.error(`❌ ${reef.name}: ดึงข้อมูล SST ไม่สำเร็จ —`, err.message);
+      const risk = getRisk(null);
+      createMarker(reef, null, null, null, null, undefined);
+      fetchAndApplyDHW(reef); // DHW อาจยังมาได้ แล้วจะคำนวณความเสี่ยงใหม่ให้เอง
+      addReefToSidebar(reef, null, risk, i * 60);
+    } finally {
       loadedCount++;
-      document.getElementById('reef-count').textContent = `${loadedCount}/8`;
+      document.getElementById('reef-count').textContent = `${loadedCount}/${REEFS.length}`;
     }
+  }));
+
+  if (failedCount > 0) {
+    console.warn(`⚠️ มี ${failedCount}/${REEFS.length} เกาะที่ดึงข้อมูล SST ไม่สำเร็จ`);
   }
 
   const overlay = document.getElementById('map-overlay');
   overlay.classList.add('hidden');
   setTimeout(() => overlay.remove(), 600);
 
-  updateStats();
+  updateStats(failedCount);
   setTimeout(() => triggerAlerts(alertReefs), 1000);
 }
 // ===== CHATBOT =====
@@ -915,11 +1131,6 @@ function toggleChat() {
     document.getElementById('chat-input').focus();
   }
 }
-
-// Chat feature disabled - Gemini API rate limited
-// async function sendChat() {
-//   // Feature temporarily disabled
-// }
 
 async function sendChat() {
   const input = document.getElementById('chat-input');

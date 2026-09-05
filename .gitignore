@@ -12,5 +12,22 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
-"dhw_models_multi.pkl" 
-"dhw_classifier_multi.pkl" 
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# โมเดล ML ที่ใหญ่เกินกว่า GitHub จะรับ (จำกัดไฟล์ละ 100 MB)
+#   dhw_models_multi.pkl     ~310 MB
+#   dhw_classifier_multi.pkl ~138 MB
+# สร้างใหม่ได้ด้วย `python train_model.py` จาก dhw_training_data.csv ที่อยู่ใน repo
+# หมายเหตุ: ห้ามใส่เครื่องหมายคำพูดคร่อมชื่อไฟล์ และห้ามมีช่องว่างต่อท้าย
+# git จะตีความเป็นส่วนหนึ่งของชื่อไฟล์ ทำให้ไม่ตรงกับไฟล์จริง (เคยพลาดมาแล้ว)
+dhw_models_multi.pkl
+dhw_classifier_multi.pkl
+
+# ไฟล์ชั่วคราวจากการทดสอบ
+.tiletest/
+tmp_*.pkl

@@ -79,40 +79,15 @@
         </ul>
       </div>
 
-      <!-- Knowledge Center -->
-      <div class="knowledge-box">
-        <div class="knowledge-title">ศูนย์ความรู้ปะการังฟอกขาว</div>
-
-        <details class="kb-item">
-          <summary>ปะการังฟอกขาวคืออะไร</summary>
-          <p>เมื่ออุณหภูมิน้ำทะเลสูงต่อเนื่องเป็นเวลานาน ปะการังจะเครียดและขับสาหร่ายซูแซนเทลลีที่ให้ทั้งสีสันและอาหารออกไป เหลือแต่โครงหินปูนสีขาวโปร่งแสง ถ้าอุณหภูมิลดลงเร็วพอจะฟื้นตัวได้ แต่ถ้าร้อนสะสมนานเกินไปปะการังจะอดอาหารและตายในที่สุด</p>
-          <p class="kb-source">ที่มา: NOAA Coral Reef Watch — coralreefwatch.noaa.gov</p>
-        </details>
-
-        <details class="kb-item">
-          <summary>DHW คืออะไร วัดยังไง</summary>
-          <p>Degree Heating Weeks คือค่าความร้อนสะสมของน้ำทะเลย้อนหลัง 12 สัปดาห์ เทียบกับอุณหภูมิสูงสุดเฉลี่ยปกติของพื้นที่ เป็นมาตรฐานของ NOAA Coral Reef Watch: DHW &lt; 1 ปกติ, 1–3.9 เฝ้าระวัง, 4–7.9 เสี่ยงสูง (Alert 1), ≥ 8 วิกฤต (Alert 2)</p>
-          <p class="kb-source">ที่มา: NOAA Coral Reef Watch — Bleaching Alert Level methodology (coralreefwatch.noaa.gov) — แหล่งข้อมูล DHW เดียวกับที่แอปนี้ใช้จริง</p>
-        </details>
-
-        <details class="kb-item">
-          <summary>อ่านระดับความเสี่ยงในแอปยังไง</summary>
-          <p>สีเขียว/เหลือง/ส้ม/แดง อิงตามเกณฑ์ DHW ข้างต้น ถ้ายังไม่มีข้อมูล DHW ระบบจะประมาณจาก SST ไปก่อนชั่วคราว คลิกจุดสีบนแผนที่เพื่อดูรายละเอียดและคำแนะนำของแต่ละเกาะได้เลย</p>
-          <p class="kb-source">หมายเหตุ: เป็นการออกแบบ UI ของ ReefAlert เอง อิงเกณฑ์ NOAA ข้างต้น ไม่ใช่มาตรฐานที่มีองค์กรอื่นเผยแพร่โดยตรง</p>
-        </details>
-
-        <details class="kb-item">
-          <summary>ช่วยอนุรักษ์ปะการังได้ยังไง</summary>
-          <p>ใช้ครีมกันแดดสูตรปลอดภัยต่อปะการัง ไม่เหยียบหรือจับปะการัง ไม่ทอดสมอเรือทับแนวปะการัง และสนับสนุนศูนย์ฟื้นฟูปะการังในพื้นที่</p>
-          <p class="kb-source">ที่มา: แนวปฏิบัติทั่วไปที่หน่วยงานอนุรักษ์ทางทะเลเผยแพร่ (เช่น NOAA) — ไม่ใช่จากงานวิจัยฉบับใดฉบับหนึ่งโดยเฉพาะ</p>
-        </details>
-
-        <details class="kb-item">
-          <summary>เจอปะการังฟอกขาว แจ้งใคร</summary>
-          <p>โทรสายด่วนพิทักษ์ป่าและรักษาทะเล <strong>1362</strong> (รับแจ้ง 24 ชม.) พร้อมถ่ายภาพและบันทึกพิกัด (GPS) ของจุดที่พบไว้เป็นหลักฐาน</p>
-          <p class="kb-source">ที่มา: ศูนย์สายด่วนพิทักษ์ป่าและรักษาทะเล 1362 — ศูนย์ร่วมของกรมอุทยานแห่งชาติฯ, กรมป่าไม้ และกรมทรัพยากรทางทะเลและชายฝั่ง (dmcr.go.th) รับแจ้งกรณีทำลายปะการัง/หญ้าทะเลโดยตรง</p>
-        </details>
-      </div>
+      <!-- Knowledge Center — เนื้อหาเต็มอยู่ที่หน้า /knowledge
+           ในแถบข้างเหลือแท็บเดียวคลิกไปทั้งหน้า ไม่กางรายการหัวข้อให้ยาว -->
+      <a class="kb-tab" href="/knowledge">
+        <span class="kb-tab-ico">📖</span>
+        <span class="kb-tab-text">
+          <span class="kb-tab-title">ศูนย์ความรู้ปะการังฟอกขาว</span>
+          <span class="kb-tab-sub">5 หัวข้อพื้นฐานที่ควรรู้</span>
+        </span>
+      </a>
 
       <!-- Reef List -->
       <div id="reef-list"></div>
@@ -173,6 +148,13 @@
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- MapLibre GL — ใช้เรนเดอร์แผนที่แบบ vector ของ OpenFreeMap
+       (ฟรีตลอด ไม่ต้องมี API key และใช้ได้ทุกโดเมนตอน deploy)
+       ต้องโหลดหลัง Leaflet เพราะ plugin ด้านล่างต่อยอดจาก L.Layer
+       ถ้าโหลดไม่สำเร็จ app.js จะข้ามไปใช้แผนที่แบบ raster ให้เองอัตโนมัติ -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.js"></script>
+  <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.0.22/leaflet-maplibre-gl.js"></script>
   <!-- App JS -->
   <script src="app.js"></script>
   <!-- ===== CHATBOT ===== -->

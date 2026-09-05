@@ -9,6 +9,8 @@
     "sst_ma7",
     "sst_ma30",
     "sst_anomaly",
+
+    
     "month"
   ],
   "max_horizon_days": 14,

@@ -14,20 +14,31 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = 'gemini-flash-latest';
+// ไล่ลองทีละรุ่นถ้ารุ่นแรกไม่ว่าง — flash-latest เป็นรุ่นหลัก ที่เหลือเป็นตัวสำรอง
+// (เจอจริงว่า flash-latest คืน 503 "overloaded" เป็นช่วงๆ ราว 1 ใน 4 ครั้ง)
+// ทั้ง 3 รุ่นนี้ทดสอบแล้วว่า key ปัจจุบันเรียกได้จริงและรับ thinkingBudget:0
+// (อย่าใส่ gemini-2.5-* / gemini-flash-lite-latest / gemini-3.6-flash — คืน 404 หรือ 400 กับ config นี้)
+const GEMINI_MODELS = ['gemini-flash-latest', 'gemini-3.5-flash', 'gemini-3.1-flash-lite'];
 const GEMINI_SYSTEM_INSTRUCTION = `คุณคือ ReefBot ผู้ช่วย AI ของแอป ReefAlert ระบบเฝ้าระวังปะการังฟอกขาวในน่านน้ำไทย
 ตอบเป็นภาษาไทย น้ำเสียงเป็นมิตร กระชับ ไม่ยาวเกินไป
 เชี่ยวชาญเรื่อง: ปะการังฟอกขาว, DHW (Degree Heating Weeks), SST (อุณหภูมิผิวน้ำทะเล), ระดับความเสี่ยงตามเกณฑ์ NOAA Coral Reef Watch, แนวปะการังในไทย, การอนุรักษ์ปะการัง, ผลกระทบจากโลกร้อน
 ถ้าถูกถามเรื่องนอกเหนือจากปะการัง/ทะเล/สิ่งแวดล้อม ให้ตอบสุภาพว่าคุณเชี่ยวชาญเฉพาะด้านนี้ แล้วชวนกลับมาคุยเรื่องปะการังแทน`;
 
-// เรียก Gemini API จริง — ปิด thinking (ไม่จำเป็นกับแชทบอทตอบคำถามทั่วไป ช่วยให้เร็วขึ้นมาก)
+// สถานะที่ "ลองซ้ำโมเดลเดิมแล้วมีโอกาสสำเร็จ" — ฝั่ง Google ขัดข้อง/คิวเต็มชั่วคราว
+// 400/401/403 ไม่รวมอยู่ในนี้เพราะลองกี่ครั้งก็ได้ผลเดิม (key ผิด/หมดอายุ) ต้องรีบ fallback ทันที
+const GEMINI_RETRYABLE_STATUS = new Set([500, 502, 503, 504]);
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// ยิง Gemini หนึ่งครั้งด้วยโมเดลที่ระบุ — โยน error ที่ติด .status ไว้ให้ตัวเรียกตัดสินใจว่าจะ retry ไหม
+// ปิด thinking (ไม่จำเป็นกับแชทบอทตอบคำถามทั่วไป ช่วยให้เร็วขึ้นมาก)
 // timeout 20 วิ กันค้างถ้า Google ไม่ตอบ (พบว่า latency จริงบางครั้งขึ้นถึง ~15-18 วิ)
-async function askGemini(chatHistory) {
+async function callGeminiOnce(model, chatHistory) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20000);
   try {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -39,14 +50,57 @@ async function askGemini(chatHistory) {
         signal: controller.signal,
       }
     );
-    if (!res.ok) throw new Error(`Gemini API status ${res.status}`);
+    if (!res.ok) {
+      const err = new Error(`Gemini API status ${res.status} (${model})`);
+      err.status = res.status;
+      throw err;
+    }
     const data = await res.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error('Gemini returned no text');
+    if (!text) throw new Error(`Gemini ไม่ส่งข้อความกลับมา (${model})`);
     return text;
   } finally {
     clearTimeout(timer);
   }
+}
+
+// เรียก Gemini แบบทนต่อความขัดข้องชั่วคราว — แยกจัดการ error เป็น 4 กลุ่ม:
+//   • 500/502/503/504 + timeout → Google ขัดข้องชั่วคราว ลองซ้ำโมเดลเดิมได้ (backoff 0.4s → 0.8s)
+//   • 429 → โควต้าต่อนาทีของ "โมเดลนั้น" เต็ม ยิงซ้ำในนาทีเดียวกันยังไงก็ไม่ผ่าน
+//     ข้ามไปโมเดลถัดไปทันที (แต่ละโมเดลมีโควต้าแยกกัน) แทนการยิงซ้ำให้โควต้าแย่ลง
+//   • 400/404 → เป็นปัญหาเฉพาะโมเดลนั้น (รุ่นถูกถอด/ไม่รับ config นี้) ข้ามไปรุ่นถัดไป
+//   • 401/403 → key ผิดหรือสิทธิ์ไม่พอ ทุกรุ่นก็พังเหมือนกัน เลิกทันทีไปใช้ local KB
+async function askGemini(chatHistory) {
+  const ATTEMPTS_PER_MODEL = 3;
+  let lastErr;
+
+  for (const model of GEMINI_MODELS) {
+    for (let attempt = 0; attempt < ATTEMPTS_PER_MODEL; attempt++) {
+      try {
+        return await callGeminiOnce(model, chatHistory);
+      } catch (err) {
+        lastErr = err;
+
+        // key ใช้ไม่ได้ — ลองรุ่นอื่นก็ไม่ช่วย ออกทันที
+        if (err.status === 401 || err.status === 403) throw err;
+
+        // โควต้าเต็ม / รุ่นนี้มีปัญหาเฉพาะตัว — เลิกกับรุ่นนี้ ไปลองรุ่นถัดไป
+        if (err.status === 429 || err.status === 400 || err.status === 404) break;
+
+        // timeout/เน็ตหลุด (ไม่มี .status) ถือว่าเป็นเรื่องชั่วคราว ลองใหม่ได้
+        const isTransient = err.status === undefined || GEMINI_RETRYABLE_STATUS.has(err.status);
+        if (!isTransient) break;
+
+        // ครั้งสุดท้ายของรุ่นนี้แล้ว — ไม่ต้องหน่วง ข้ามไปรุ่นถัดไปเลย
+        if (attempt < ATTEMPTS_PER_MODEL - 1) {
+          await sleep(400 * 2 ** attempt);
+        }
+      }
+    }
+    console.warn(`⚠️ Gemini รุ่น ${model} ใช้ไม่ได้ (${lastErr.message}) ลองรุ่นถัดไป`);
+  }
+
+  throw lastErr;
 }
 
 // Middleware
@@ -61,6 +115,11 @@ app.use(express.static(__dirname));
 // หน้าอธิบายวิธีการทำงานของระบบ
 app.get(['/methodology', '/about'], (req, res) => {
   res.sendFile(path.join(__dirname, 'methodology.html'));
+});
+
+// ศูนย์ความรู้ปะการังฟอกขาว — แยกออกมาจากแถบข้างของหน้าแผนที่
+app.get(['/knowledge', '/kb'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'knowledge.html'));
 });
 
 // ===== Local Knowledge Base for ReefBot =====
