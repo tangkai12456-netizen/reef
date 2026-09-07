@@ -1,0 +1,18 @@
+# โมเดล ML และข้อมูลเทรน — ไม่ได้ใช้ตอน runtime เพราะพยากรณ์คำนวณล่วงหน้าไว้ใน MongoDB แล้ว
+# (รวมกันราว 450 MB ถ้าอัปไปด้วยจะ deploy ไม่ผ่าน)
+*.pkl
+*.csv
+*.xlsx
+
+# สคริปต์ฝั่ง Python รันบน GitHub Actions ไม่ใช่บน Vercel
+*.py
+__pycache__/
+requirements.txt
+
+# เซิร์ฟเวอร์ Express สำหรับ dev ในเครื่อง — บน Vercel ใช้ api/ แทน
+server.js
+test_frontend.js
+
+# ของ Netlify ไม่เกี่ยวกับ Vercel
+netlify.toml
+netlify/
