@@ -23,8 +23,14 @@ let clientPromise;
 function getClient() {
   if (!clientPromise) {
     const uri = Netlify.env.get('MONGODB_URI');
-    if (!uri) throw new Error('ไม่ได้ตั้งค่า MONGODB_URI');
-    clientPromise = new MongoClient(uri).connect();
+    if (!uri) throw new Error('MONGODB_URI_MISSING');
+    clientPromise = new MongoClient(uri, { serverSelectionTimeoutMS: 8000 })
+      .connect()
+      .catch((err) => {
+        // ถ้าไม่ล้าง promise ที่ reject ทิ้ง container นี้จะใช้ตัวเดิมซ้ำตลอด
+        clientPromise = undefined;
+        throw err;
+      });
   }
   return clientPromise;
 }
@@ -64,7 +70,15 @@ export default async (req) => {
   } catch (err) {
     // ไม่ปั้นข้อมูลพยากรณ์ปลอมส่งกลับเด็ดขาด ให้ frontend รู้ว่าพังจริง
     console.error('อ่านผลพยากรณ์จาก MongoDB ไม่สำเร็จ:', err);
-    return json({ error: 'พยากรณ์ไม่สำเร็จ (database error)' }, 500);
+    const detail =
+      err.message === 'MONGODB_URI_MISSING'
+        ? 'ยังไม่ได้ตั้งค่า MONGODB_URI'
+        : err.name === 'MongoServerSelectionError'
+          ? 'ต่อ MongoDB ไม่ได้ (มักเกิดจาก IP ไม่อยู่ใน Network Access ของ Atlas)'
+          : err.name === 'MongoServerError'
+            ? 'MongoDB ปฏิเสธ (ตรวจ user/รหัสผ่านใน MONGODB_URI)'
+            : err.name;
+    return json({ error: 'พยากรณ์ไม่สำเร็จ', detail }, 500);
   }
 };
 
