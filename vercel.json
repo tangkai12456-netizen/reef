@@ -4,9 +4,29 @@
   "buildCommand": null,
   "outputDirectory": ".",
   "rewrites": [
-    { "source": "/methodology", "destination": "/methodology.html" },
-    { "source": "/about", "destination": "/methodology.html" },
-    { "source": "/knowledge", "destination": "/knowledge.html" },
-    { "source": "/kb", "destination": "/knowledge.html" }
-  ]
+    {
+      "source": "/methodology",
+      "destination": "/methodology.html"
+    },
+    {
+      "source": "/about",
+      "destination": "/methodology.html"
+    },
+    {
+      "source": "/knowledge",
+      "destination": "/knowledge.html"
+    },
+    {
+      "source": "/kb",
+      "destination": "/knowledge.html"
+    }
+  ],
+  "functions": {
+    "api/chat.mjs": {
+      "maxDuration": 60
+    },
+    "api/predict.mjs": {
+      "maxDuration": 15
+    }
+  }
 }
