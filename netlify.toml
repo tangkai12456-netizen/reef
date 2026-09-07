@@ -1,0 +1,36 @@
+# ============================================================
+#  ReefAlert — ตั้งค่า Netlify
+#  เว็บเป็นไฟล์นิ่ง (index.html, app.js, style.css) เสิร์ฟจาก root
+#  ส่วน /api/* วิ่งเข้า serverless functions ใน netlify/functions/
+#  path ของแต่ละ function กำหนดไว้ในตัวไฟล์เอง (export const config)
+# ============================================================
+
+[build]
+  publish = "."
+  # ไม่มีขั้นตอน build — ไฟล์หน้าเว็บใช้งานได้ตามที่เป็นอยู่เลย
+  command = ""
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# หน้าเว็บย่อยที่ server.js เคยทำ routing ให้ (app.get(['/methodology', '/about']) ฯลฯ)
+[[redirects]]
+  from = "/methodology"
+  to = "/methodology.html"
+  status = 200
+
+[[redirects]]
+  from = "/about"
+  to = "/methodology.html"
+  status = 200
+
+[[redirects]]
+  from = "/knowledge"
+  to = "/knowledge.html"
+  status = 200
+
+[[redirects]]
+  from = "/kb"
+  to = "/knowledge.html"
+  status = 200

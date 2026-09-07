@@ -31,3 +31,6 @@ dhw_classifier_multi.pkl
 # ไฟล์ชั่วคราวจากการทดสอบ
 .tiletest/
 tmp_*.pkl
+
+# Netlify (โฟลเดอร์ทำงานภายใน ไม่ใช่โค้ดเรา)
+.netlify/
