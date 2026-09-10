@@ -1,0 +1,58 @@
+# ============================================================
+#  คำนวณผลพยากรณ์ DHW ล่วงหน้าแล้วเก็บลง MongoDB
+#
+#  ต้องรันที่นี่ไม่ใช่บน Netlify เพราะโมเดล scikit-learn รวมกันราว 450 MB
+#  ซึ่งเกินขีดจำกัด 50 MB ของ Netlify Functions หลายเท่า และ Netlify
+#  ไม่มี Python runtime ให้ตามค่าเริ่มต้น
+#
+#  ต้องตั้ง secret ไว้ที่ Settings > Secrets and variables > Actions:
+#      MONGODB_URI
+# ============================================================
+
+name: Precompute DHW forecasts
+
+on:
+  schedule:
+    # 20:23 UTC = 03:23 เวลาไทย — ให้ข้อมูลใหม่พร้อมก่อนคนเริ่มใช้ตอนเช้า
+    # NOAA Coral Reef Watch อัปเดตข้อมูลวันละครั้ง
+    - cron: "23 20 * * *"
+  workflow_dispatch: {}   # กดรันเองได้จากหน้า Actions
+
+jobs:
+  forecast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: ติดตั้ง dependencies
+        run: pip install -r requirements.txt
+
+      # โมเดล .pkl ใหญ่เกินกว่าจะเก็บใน git (ดู .gitignore) จึงเทรนเองแล้ว cache ไว้
+      # cache จะใช้ซ้ำได้จนกว่าข้อมูลเทรนหรือโค้ดเทรนจะเปลี่ยน
+      - name: กู้โมเดลจาก cache
+        id: cache-models
+        uses: actions/cache@v4
+        with:
+          path: |
+            dhw_models_multi.pkl
+            dhw_classifier_multi.pkl
+            dhw_model.pkl
+          key: dhw-models-${{ hashFiles('dhw_training_data.csv', 'train_model.py') }}
+
+      - name: เทรนโมเดล (เฉพาะตอนที่ cache ไม่มี)
+        if: steps.cache-models.outputs.cache-hit != 'true'
+        run: python train_model.py
+
+      - name: คำนวณผลพยากรณ์แล้วเขียนลง MongoDB
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          MONGODB_DB: reefalert
+          PYTHONIOENCODING: utf-8
+        run: python precompute_forecasts.py
