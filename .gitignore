@@ -34,7 +34,3 @@ tmp_*.pkl
 
 # Netlify (โฟลเดอร์ทำงานภายใน ไม่ใช่โค้ดเรา)
 .netlify/
-
-# workflow ของ GitHub Actions — push ผ่าน git ไม่ได้เพราะ token ที่ใช้อยู่
-# ไม่มีสิทธิ์ `workflow` ต้องสร้างผ่านหน้าเว็บ GitHub แทน (ไฟล์ยังอยู่ในเครื่อง)
-.github/workflows/
